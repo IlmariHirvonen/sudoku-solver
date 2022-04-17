@@ -7,7 +7,29 @@ use std::thread;
 const RADIX: u32 = 10;
 
 fn main() {
+    let test_grid = vec!(1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9,
+                         1,2,3,4,5,6,7,8,9);
+    print_sudoku(&test_grid);
+    let mut test_2 = vec![0;81];
+    for i in 0..81 {
+        test_2[i] = test_grid[transpose_index(i)];
+    }
+    print_sudoku(&test_2);
+    let mut test_3 =  vec![0;81];
+    for i in 0..81 {
+        test_3[i] = test_2[transpose_index(i)];
+    }
+    print_sudoku(&test_3);
     let filename = "hard_sudokus.txt";
+    //let filename = "all_17_clue_sudokus.txt";
+
     let contents = fs::read_to_string(filename)
         .expect("Something went wrong reading the file");
     let sudoku_strings =  contents.split_whitespace();
@@ -39,6 +61,7 @@ fn main() {
             solve_sudoku(&mut sudokus[i], i);
         }
     });
+
 
     let handle2 = thread::spawn( move || {
         let mut sudokus = sudokus2;
@@ -97,7 +120,7 @@ fn main() {
     handle4.join().unwrap();
     handle5.join().unwrap();
     handle6.join().unwrap();
-    handle7.join().unwrap();
+    handle7.join().unwrap(); // infinite loop 
     handle8.join().unwrap();
 
 
@@ -116,55 +139,71 @@ fn main() {
 }
 
 fn solve_sudoku(sudoku: &mut Vec<u32>, s: usize) {
-    //println!("The index is: {}",s);
-    //print_sudoku(&sudoku);
+    println!("The index is: {}",s);
+    print_sudoku(&sudoku);
 
-    let now2 = Instant::now();
-
-    check_for_naked_singles(sudoku);
-    //check_for_hidden_singles(sudoku);
-    //let time_taken2 = now2.elapsed().as_nanos() as f64;
-    //println!("It took {} seconds", (time_taken2 / 1000000000 as f64));
-    //println!();
-    
-    //checking for hidden singles
-    
-
-    backtraking(sudoku);
-    //println!("modified sudoku: ");
-    //print_sudoku(&sudoku);
-}
-
-fn check_for_naked_singles(sudoku: &mut Vec<u32>) {
-    let mut numbers_changed = true;
     //checking for naked singels
-    while numbers_changed {
-        numbers_changed = false;
-        let mut notes = possible_numbers(&sudoku);
-        //let mut refined_notes = notes.clone();
-        for i in 0..81 {  
-            if sudoku[i] != 0 {
-                continue;
-            } 
-            notes[i].sort_unstable();
-            notes[i].reverse();
-            if  notes[i][1] == 0 && notes[i][0] != 0 {
-                sudoku[i] = notes[i][0];
-                numbers_changed = true;
-            } /*else if  sudoku_puzzles[s][i] == 0 && refined_notes[i][1] == 0 && refined_notes[i][0] != 0{
-                sudoku_puzzles[s][i] = refined_notes[i][0];
-                numbers_changed = true;
-            }*/ 
-        }
-    }
+    check_for_singles(sudoku);
+
+    //checking for hidden singles
+    check_for_hidden_singles(sudoku);
+
+    //backtracking
+    backtraking(sudoku);
+    println!("modified sudoku: ");
+    print_sudoku(&sudoku);
 }
 
+fn check_sudoku(s: &Vec<u32>, index: usize) -> bool {
+    let mut index = index;
+    let mut correct = true;
+
+    fn check_row(row: &[u32]) -> bool{
+        //for every number there is added 1 to the array using the value as index
+        //if any index has more than 2 it means that the row has 2 of the same numbers and thus is invalid
+        let mut output = true;
+        let mut check:[u32;10] = [0; 10];
+        for i in row {
+            let j = *i as usize;
+            check[j] += 1;
+        }
+        for i in 1..10 {
+            if check[i] > 1 {
+                output = false;
+                break;
+            }
+        }
+        output
+    }
+    if index == 81 {
+        index = 80;
+    }
+
+    
+    if correct != false {
+        let i = index / 9;
+        correct = check_row(&s[i*9..(i+1)*9]);  
+    }
+    if correct != false {
+        let i = index %9;
+        let column_as_row = [s[i], s[i+9], s[i+18], s[i +27], s[i+36], s[i+45], s[i + 54], s[i + 63], s[i+72]];
+        correct = check_row(&column_as_row);
+    }
+    if correct != false {
+        let i = index;
+        let j =  block_to_row(i);
+        let block_as_row = [s[j[0]], s[j[1]], s[j[2]], s[j[3]], s[j[4]], s[j[5]], s[j[6]], s[j[7]], s[j[8]]];
+        correct = check_row(&block_as_row);
+    }
+    correct
+}
 fn check_for_hidden_singles(sudoku: &mut Vec<u32>) {
     let mut numbers_found = 0;
     let mut numbers_changed = true;
     while numbers_changed {
         numbers_changed = false;
-        let notes = possible_numbers(&sudoku);
+        let mut notes = possible_numbers(&sudoku);
+        //check_for_doubles(&mut notes);
         //TODO OPTIMIZATION convert columns and blocks to rows before loop
         let mut column_notes = notes.clone();
         let mut block_notes = notes.clone();
@@ -218,47 +257,88 @@ fn check_for_hidden_singles(sudoku: &mut Vec<u32>) {
     //println!("Numbers found {}", numbers_found);
 }
 
-fn check_sudoku(s: &Vec<u32>, index: usize) -> bool {
-    let mut index = index;
-    let mut correct = true;
+fn check_for_singles(sudoku: &mut Vec<u32>) {
+    let mut numbers_changed = true;
+    while numbers_changed {
+        numbers_changed = false;
+        let mut notes = possible_numbers(&sudoku);
+        check_for_doubles(&mut notes);
+        for i in 0..81 {  
+            if sudoku[i] != 0 {
+                continue;
+            } 
 
-    fn check_row(row: &[u32]) -> bool{
-        
-        let mut output = true;
-        
-        let mut check:[u32;10] = [0; 10];
-        for i in row {
-            let j = *i as usize;
-            check[j] += 1;
+            if notes[i].len() == 2 && notes[i][0] == 0 {
+                sudoku[i] = notes[i][1];
+                numbers_changed = true;
+            } 
         }
-        for i in 1..10 {
-            if check[i] > 1 {
-                output = false;
-                break;
+    }
+}
+
+fn check_for_doubles(notes: &mut Vec<Vec<u32>>) -> bool{
+
+    fn update_notes(not: &mut Vec<Vec<u32>>) -> bool {
+        let mut changed = false;
+        let mut index = 0;
+        for i in 0..9 {
+            let mut indexes:Vec<usize> = vec!();
+            for j in 0..9 {
+                index = i*9+j;
+                if not[index].len() == 3 {
+                    indexes.push(index);
+                }
+            }
+            for j in 0..indexes.len() {
+                for k in 0..indexes.len() {
+                    if j != k {
+                        if not[indexes[j]][1] == not[indexes[k]][1] && not[indexes[j]][2] == not[indexes[k]][2] {
+                            let number1 = not[indexes[k]][1];
+                            let number2 = not[indexes[k]][2];
+                            for l in 0..9 {
+                                if i*9 + l != indexes[j] && i*9 + l != indexes[k] {
+                                    for m in 0..not[i*9 + l].len(){
+                                        if not[i*9 + l][m] == number1 || not[i*9 + l][m] == number2{
+                                            not[i*9 + l][m] = 0;
+                                            changed = true;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                        }
+                        //if double break and update notes
+                        //continue until notes don't change and then check for singles
+                    }
+                }
             }
         }
-        output
+        changed
     }
-    if index == 81 {
-        index = 80;
+    let mut updated = false;
+    updated = update_notes(notes); 
+    let mut column_notes = notes.clone();
+    for i in 0..81 {
+        column_notes[i] = notes[transpose_index(i)].clone();
+    }
+    updated = update_notes(&mut column_notes);
+    for i in 0..81 {
+        notes[i] = column_notes[transpose_index(i)].clone();
+    }
+    let mut block_notes = notes.clone();
+    for i in 0..81 {
+        block_notes[i]  = notes[block_to_row_index(i)].clone();
+    }
+    updated = update_notes(&mut block_notes);
+    for i in 0..81 {
+        notes[i]  = block_notes[row_to_block_index(i)].clone();
     }
 
-    if correct != false {
-        let i = index / 9;
-        correct = check_row(&s[i*9..(i+1)*9]);  
+    for i in 0..81 {
+        notes[i].sort();
+        notes[i].dedup();
     }
-    if correct != false {
-        let i = index %9;
-        let column_as_row = [s[i], s[i+9], s[i+18], s[i +27], s[i+36], s[i+45], s[i + 54], s[i + 63], s[i+72]];
-        correct = check_row(&column_as_row);
-    }
-    if correct != false {
-        let i = index;
-        let j =  block_to_row(i);
-        let block_as_row = [s[j[0]], s[j[1]], s[j[2]], s[j[3]], s[j[4]], s[j[5]], s[j[6]], s[j[7]], s[j[8]]];
-        correct = check_row(&block_as_row);
-    }
-    correct
+    updated
 }
 
 fn block_to_row(index: usize) -> Vec<usize> {        
@@ -279,7 +359,12 @@ fn block_to_row(index: usize) -> Vec<usize> {
 
 
 fn backtraking(sudoku: &mut Vec<u32>) -> bool{
-    let notes = possible_numbers(&sudoku);
+    let mut notes = possible_numbers(&sudoku);
+    let mut changed = true;
+    while changed {
+        changed = check_for_doubles(&mut notes);
+    }
+    //print_sudoku(sudoku);
     fn backtraking_recursive(sudoku: &mut Vec<u32>, notes: &Vec<Vec<u32>>, index: usize) -> bool {
         let mut solved:bool = false;
         if index == 81 && check_sudoku(&sudoku, index) {
@@ -293,6 +378,7 @@ fn backtraking(sudoku: &mut Vec<u32>) -> bool{
                 for n in &notes[index] {
                     if n != &0 && !solved {
                         sudoku[index] = *n;
+                        //print_sudoku(sudoku);
                         if check_sudoku(&sudoku, index) {
                             solved = backtraking_recursive(sudoku, notes, index + 1);
                         }
@@ -368,6 +454,10 @@ fn possible_numbers(sudoku: &Vec<u32>) -> Vec<Vec<u32>> {
                 }
             }
         }
+    }
+    for i in 0..81 {
+        notes[i].sort();
+        notes[i].dedup();
     }
     //println!("{:?}",notes);
 
@@ -488,7 +578,6 @@ fn transpose_index(index: usize) -> usize {
         _  => 0,
     }
 }
-
 fn block_to_row_index(index:usize) -> usize {
     match index {
         0  => 0,
@@ -573,6 +662,93 @@ fn block_to_row_index(index:usize) -> usize {
         79 => 79,
         80 => 80,
         _  => 0,
+    }
+
+}
+fn row_to_block_index(index:usize) -> usize {
+    match index {
+        0 => 0 ,
+        1 => 1 ,
+        2 => 2 ,
+        9 => 3 ,
+        10 => 4 ,
+        11 => 5 ,
+        18 => 6 ,
+        19 => 7 ,
+        20 => 8 ,
+        3 => 9 ,
+        4 => 10,
+        5 => 11,
+        12 => 12,
+        13 => 13,
+        14 => 14,
+        21 => 15,
+        22 => 16,
+        23 => 17,
+        6 => 18,
+        7 => 19,
+        8 => 20,
+        15 => 21,
+        16 => 22,
+        17 => 23,
+        24 => 24,
+        25 => 25,
+        26 => 26,
+        27 => 27,
+        28 => 28,
+        29 => 29,
+        36 => 30,
+        37 => 31,
+        38 => 32,
+        45 => 33,
+        46 => 34,
+        47 => 35,
+        30 => 36,
+        31 => 37,
+        32 => 38,
+        39 => 39,
+        40 => 40,
+        41 => 41,
+        48 => 42,
+        49 => 43,
+        50 => 44,
+        33 => 45,
+        34 => 46,
+        35 => 47,
+        42 => 48,
+        43 => 49,
+        44 => 50,
+        51 => 51,
+        52 => 52,
+        53 => 53,
+        54 => 54,
+        55 => 55,
+        56 => 56,
+        63 => 57,
+        64 => 58,
+        65 => 59,
+        72 => 60,
+        73 => 61,
+        74 => 62,
+        57 => 63,
+        58 => 64,
+        59 => 65,
+        66 => 66,
+        67 => 67,
+        68 => 68,
+        75 => 69,
+        76 => 70,
+        77 => 71,
+        60 => 72,
+        61 => 73,
+        62 => 74,
+        69 => 75,
+        70 => 76,
+        71 => 77,
+        78 => 78,
+        79 => 79,
+        80 => 80,
+        _ => 0 ,
     }
 
 }
